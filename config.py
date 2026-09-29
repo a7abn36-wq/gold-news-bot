@@ -20,7 +20,8 @@ CHANNEL_ID = os.environ.get("CHANNEL_ID") or ""
 # ===== إعدادات النشر (ممكن تسيبها زي ما هي) =====
 NEWS_CHECK_MINUTES = 10      # كل كام دقيقة يجيب أخبار جديدة
 NEWS_MAX_PER_CYCLE = 8       # أقصى عدد أخبار تنشر في المرة الواحدة
-RELEVANCE_THRESHOLD = 5      # الحد الأدنى لأهمية الخبر عشان يتنشر (5 = متوازن)
+RELEVANCE_THRESHOLD = 3      # الحد الأدنى لأهمية الخبر عشان يتنشر (3 = مفتوح شوية عشان الغرفة متسكتش)
+SILENCE_VALVE_MINUTES = 120  # لو مفيش خبر اتنشر المدة دي، ابعت أقوى خبر جديد موجود مهما كانت نقاطه
 CALENDAR_CHECK_MINUTES = 5   # كل كام دقيقة يفحص التقويم الاقتصادي
 ALERT_BEFORE_MINUTES = 30    # ينبّهك قبل الخبر المهم بكام دقيقة
 SEND_DELAY_SECONDS = 2       # فاصل بين كل رسالة (عشان حدود تليجرام)
@@ -29,10 +30,12 @@ SEND_DELAY_SECONDS = 2       # فاصل بين كل رسالة (عشان حدو�
 TIMEZONE = "Africa/Cairo"
 
 # ===== مصادر الأخبار (لو مصدر وقع البوت يكمل الباقي عادي) =====
-# النوع: gold = أخبار دهب مخصصة | markets = أخبار أسواق عامة
+# النوع: gold = أخبار دهب/سلع مخصصة | markets = أخبار أسواق عامة
+# ملاحظة: ياهو فاينانس بيحجب سيرفرات جي هب — استبدلناه بمصادر مجربة شغالة
 NEWS_SOURCES = [
-    ("Yahoo Finance - الدهب", "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GC%3DF&region=US&lang=en-US", "gold"),
-    ("Yahoo Finance - الدولار", "https://feeds.finance.yahoo.com/rss/2.0/headline?s=DX-Y.NYB&region=US&lang=en-US", "markets"),
+    ("WSJ - الأسواق", "https://feeds.a.dj.com/rss/RSSMarketsMain.xml", "gold"),
+    ("Investing - الكوموديتيز", "https://www.investing.com/rss/news_11.rss", "gold"),
+    ("Investing - الاقتصاد", "https://www.investing.com/rss/news_14.rss", "markets"),
     ("CNBC - الاقتصاد", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", "markets"),
     ("CNBC - أمريكا", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114", "markets"),
     ("Investing - الفوركس", "https://www.investing.com/rss/news_1.rss", "markets"),
