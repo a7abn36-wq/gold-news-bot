@@ -1,0 +1,50 @@
+# ⚡ بوت أخبار الدهب والدولار — تشغيل مجاني 24/7 على GitHub Actions
+# ------------------------------------------------------------------
+# جي هب بيصحّي البوت كل 5 دقايق:
+#   1) يسترجع الحالة من برانش bot-state
+#   2) يرد على الأوامر + يبعت التنبيهات + ينشر الأخبار الجديدة
+#   3) يحفظ الحالة تاني في نفس البرانش
+#
+# ملاحظات مهمة:
+# - لازم الريبو يكون Public (عشان دقائق الـ Actions مجانية بلا حدود)
+# - حط Secrets: TELEGRAM_TOKEN و CHANNEL_ID
+#   (Repo → Settings → Secrets and variables → Actions)
+# - تقدر تجرب يدوي: Actions → Gold News Bot → Run workflow
+
+name: Gold News Bot
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # كل 5 دقايق (أقل فترة مسموحة في جي هب)
+  workflow_dispatch:          # زرار تشغيل يدوي (مفيد للتجربة)
+
+concurrency:
+  group: gold-news-bot        # ممنوع تشغيلين يعملوا في نفس الوقت
+  cancel-in-progress: false
+
+permissions:
+  contents: write             # عشان البوت يقدر يحفظ الحالة في برانش bot-state
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: ⬇️ تحميل الكود
+        uses: actions/checkout@v4
+
+      - name: 🐍 تجهيز بايثون (مع كاش للمكتبات)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-actions.txt
+
+      - name: 📦 تنصيب المكتبات
+        run: pip install --quiet -r requirements-actions.txt
+
+      - name: 🤖 تشغيل دورة البوت
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: python gh_bot.py

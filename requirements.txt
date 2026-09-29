@@ -1,0 +1,4 @@
+python-telegram-bot[job-queue]>=21.0
+feedparser>=6.0
+requests>=2.31
+deep-translator>=1.11
