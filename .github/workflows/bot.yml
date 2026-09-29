@@ -59,26 +59,13 @@ jobs:
         run: |
           REPO="${{ github.repository }}"
           ME="${{ github.run_id }}"
-          ACTIVE=""
-          for i in 1 2 3; do
-            ACTIVE=$(curl -sS -H "Authorization: token $GH_PAT" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/actions/runs?per_page=30" \
-              | python3 -c "
-import json,sys
-try:
-    d=json.load(sys.stdin)
-    me=int('$ME')
-    n=sum(1 for r in d.get('workflow_runs',[])
-          if r['id']!=me and r['status'] in ('queued','in_progress'))
-    print(n)
-except Exception:
-    sys.exit(1)
-") && [ -n "$ACTIVE" ] && break
-            ACTIVE=""
-            sleep 20
-          done
-          if [ -z "$ACTIVE" ]; then ACTIVE="0"; fi
+          ACTIVE=$(curl -sS -H "Authorization: token $GH_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/runs?per_page=30" \
+            | python3 -c "import json,sys
+          d=json.load(sys.stdin)
+          me=int('$ME')
+          print(sum(1 for r in d.get('workflow_runs',[]) if r['id']!=me and r['status'] in ('queued','in_progress')))" ) || ACTIVE="0"
           echo "other active runs: $ACTIVE"
           if [ "$ACTIVE" != "0" ]; then
             echo "another run is fueling the chain — no re-dispatch needed"
