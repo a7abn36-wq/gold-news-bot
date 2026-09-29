@@ -146,7 +146,8 @@ def channel_target():
 # ---------- رد على الأوامر ----------
 def reply_news(tg, chat_id):
     tg.send_html(chat_id, "⏳ لحظة... بجيب آخر الأخبار وأترجمها")
-    ready = news_module.get_fresh_news()
+    data = news_module.get_fresh_news()
+    ready = data["ready"]
     if not ready:
         tg.send_html(chat_id, "مفيش أخبار مهمة جديدة دلوقتي ✅ أنا أصلاً بنشرها تلقائي في القناة")
         return
@@ -202,6 +203,7 @@ def handle_commands(tg):
         if chat_id is None or not text:
             continue
         command = text.split()[0].split("@")[0].lower()
+        log.info("أمر جديد: %s (من %s)", command, chat_id)
         try:
             if command in ("/start", "/help"):
                 tg.send_html(chat_id, HELP_TEXT)
@@ -269,13 +271,29 @@ def broadcast_news_if_due(tg):
         log.info("لسه بدري على الأخبار (آخر فحص من %.0f دقيقة)", elapsed / 60)
         return
     state.set_last_news_check()  # سجّل الفحص قبل الجلب حتى لو حصل مشكلة متيجيش كل 5 دقايق
-    ready = news_module.get_fresh_news()
+    data = news_module.get_fresh_news()
+    ready = data["ready"]
     if not ready:
+        # صمام منع السكوت: لو مفيش خبر اتنشر من SILENCE_VALVE_MINUTES،
+        # ابعت أقوى خبر جديد موجود (له علاقة أساسية على الأقل score >= 1)
+        best = data.get("best_below")
+        idle = time.time() - state.get_last_post_time()
+        if best and idle >= config.SILENCE_VALVE_MINUTES * 60:
+            score, item = best
+            log.info("صمام منع السكوت: مفيش نشر من %.0f دقيقة — هبعت أقوى خبر جديد (نقاط %d)",
+                     idle / 60, score)
+            title = news_module.translate_to_arabic(item["title"])
+            summary = news_module.translate_to_arabic(item["summary"]) if item["summary"] else ""
+            if tg.send_html(target, news_module.format_news_message(item, title, summary)):
+                state.set_last_post_time()
+                log.info("صمام السكوت بعت خبر: %s", item["title"][:60])
+            return
         log.info("مفيش أخبار مهمة جديدة")
         return
     log.info("هينشر %d خبر", len(ready))
     for r in ready:
         if tg.send_html(target, r["message"]):
+            state.set_last_post_time()
             time.sleep(config.SEND_DELAY_SECONDS)
         else:
             log.error("فشل النشر — اتأكد إن البوت أدمن في القناة")
