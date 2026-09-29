@@ -9,6 +9,7 @@
 - seen_alerts:    التنبيهات اللي اتبعتت (عشان التنبيه ميتكررش)
 - translations:   كاش الترجمة (عشان ماتترجمش نفس الخبر مرتين)
 - last_news_check: آخر مرة جبنا أخبار (للتحكم في فترة الفحص)
+- last_post_time:  آخر مرة اتنشر خبر فعلاً (لصمام منع السكوت)
 - last_update_id:  آخر رسالة أتمر اتقرات (لرد على الأوامر)
 """
 import hashlib
@@ -36,6 +37,7 @@ def _empty() -> dict:
         "seen_alerts": {},    # مفتاح التنبيه -> وقت الإرسال (epoch)
         "translations": {},   # md5 -> [الترجمة, وقت الحفظ (epoch)]
         "last_news_check": 0,
+        "last_post_time": 0,
         "last_update_id": 0,
     }
 
@@ -131,6 +133,15 @@ def get_last_news_check() -> float:
 
 def set_last_news_check(ts: float = None):
     load()["last_news_check"] = ts if ts is not None else time.time()
+
+
+# ---------- آخر رسالة اتنشرت (صمام منع السكوت) ----------
+def get_last_post_time() -> float:
+    return load().get("last_post_time", 0)
+
+
+def set_last_post_time(ts: float = None):
+    load()["last_post_time"] = ts if ts is not None else time.time()
 
 
 # ---------- رسايل الأوامر ----------
