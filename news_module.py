@@ -158,8 +158,12 @@ def format_news_message(item, arabic_title: str, arabic_summary: str) -> str:
     return msg
 
 
-def get_fresh_news():
-    """الوظيفة الرئيسية: يجيب الجديد، يرشّح المهم، يترجمه — ويرجّع الجاهز للنشر"""
+def get_fresh_news() -> dict:
+    """الوظيفة الرئيسية: يجيب الجديد، يرشّح المهم، يترجمه
+    بيرجّع dict فيه:
+      ready      = الجاهز للنشر (عدّى حد الأهمية)
+      best_below = أقوى خبر جديد تحت الحد (score, item) — يستخدمه صمام منع السكوت
+    """
     all_items = fetch_all_sources()
     fresh = [it for it in all_items if not db.is_news_seen(it["link"])]
     log.info("أخبار جديدة: %d من إجمالي %d", len(fresh), len(all_items))
@@ -179,7 +183,13 @@ def get_fresh_news():
             "score": score,
             "message": format_news_message(item, arabic_title, arabic_summary),
         })
+
+    # أقوى خبر جديد تحت الحد — لازم يكون له علاقة أساسية على الأقل (score >= 1)
+    best_below = None
+    if scored and scored[0][0] >= 1:
+        best_below = (scored[0][0], scored[0][1])
+
     # علّم كل الأخبار الجديدة كمشوفة (حتى اللي مش مهمة) عشان متتراجعش تاني
     for it in fresh:
         db.mark_news_seen(it["link"])
-    return ready
+    return {"ready": ready, "best_below": best_below}
