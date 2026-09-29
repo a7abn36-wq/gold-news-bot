@@ -1,31 +1,30 @@
 # ⚡ بوت أخبار الدهب والدولار — تشغيل مجاني 24/7 على GitHub Actions
 # ------------------------------------------------------------------
-# جي هب بيصحّي البوت كل 5 دقايق:
-#   1) يسترجع الحالة من برانش bot-state
-#   2) يرد على الأوامر + يبعت التنبيهات + ينشر الأخبار الجديدة
-#   3) يحفظ الحالة تاني في نفس البرانش
+# طريقة التشغيل: سلسلة ذاتية الاستمرار
+#   كل دورة بتشغّل البوت، وبعدين (بعد استراحة 120 ثانية) بتدعّي الدورة اللي بعدها.
+#   حارس التفرّع: مفيش دورة بتعيّي دورة جديدة لو فيه تشغيل تاني شغال أو في طابور،
+#   فعدد السلاسل بيفضل 1 دايماً مهما زادت التشغيلات اليدوية أو المجدولة.
+#   الجدولة cron الأصلية شغالة برضه كاحتياطي (نفس الحارس بيمنع أي تزاحم).
 #
 # ملاحظات مهمة:
-# - لازم الريبو يكون Public (عشان دقائق الـ Actions مجانية بلا حدود)
-# - حط Secrets: TELEGRAM_TOKEN و CHANNEL_ID
-#   (Repo → Settings → Secrets and variables → Actions)
-# - تقدر تجرب يدوي: Actions → Gold News Bot → Run workflow
+# - الريبو Public (عشان دقائق الـ Actions مجانية بلا حدود)
+# - Secrets: TELEGRAM_TOKEN + CHANNEL_ID + GH_PAT (مخصص تحريك السلسلة)
+# - تجربة يدوية: Actions → Gold News Bot → Run workflow
+# - لو GH_PAT انتهت صلاحيتها السلسلة بتقف: جدّد التوكن وحدّث الـ Secret
 
 name: Gold News Bot
 
-# [schedule-fix] re-registered
-
 on:
   schedule:
-    - cron: "*/5 * * * *"   # كل 5 دقايق (أقل فترة مسموحة في جي هب)
-  workflow_dispatch:          # زرار تشغيل يدوي (مفيد للتجربة)
+    - cron: "*/5 * * * *"   # احتياطي — الحارس بيفضل سلسلة واحدة بس
+  workflow_dispatch:          # التشغيل اليدوي (بيشغّل السلسلة كمان)
 
 concurrency:
-  group: gold-news-bot        # ممنوع تشغيلين يعملوا في نفس الوقت
+  group: gold-news-bot        # ممنوع تشغيلين في نفس الوقت
   cancel-in-progress: false
 
 permissions:
-  contents: write             # عشان البوت يقدر يحفظ الحالة في برانش bot-state
+  contents: write             # عشان البوت يحفظ الحالة في برانش bot-state
 
 jobs:
   run:
@@ -52,3 +51,43 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: python gh_bot.py
+
+      - name: 🔁 تحريك الدورة الجاية (سلسلة ذاتية الاستمرار)
+        if: always()
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          REPO="${{ github.repository }}"
+          ME="${{ github.run_id }}"
+          ACTIVE=""
+          for i in 1 2 3; do
+            ACTIVE=$(curl -sS -H "Authorization: token $GH_PAT" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/runs?per_page=30" \
+              | python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin)
+    me=int('$ME')
+    n=sum(1 for r in d.get('workflow_runs',[])
+          if r['id']!=me and r['status'] in ('queued','in_progress'))
+    print(n)
+except Exception:
+    sys.exit(1)
+") && [ -n "$ACTIVE" ] && break
+            ACTIVE=""
+            sleep 20
+          done
+          if [ -z "$ACTIVE" ]; then ACTIVE="0"; fi
+          echo "other active runs: $ACTIVE"
+          if [ "$ACTIVE" != "0" ]; then
+            echo "another run is fueling the chain — no re-dispatch needed"
+            exit 0
+          fi
+          sleep 120
+          HTTP=$(curl -sS --fail -o /tmp/dispatch_body.txt -w "%{http_code}" -X POST \
+            -H "Authorization: token $GH_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/workflows/bot.yml/dispatches" \
+            -d '{"ref":"main"}') || { echo "DISPATCH FAILED:"; cat /tmp/dispatch_body.txt; exit 1; }
+          echo "next cycle dispatched (HTTP $HTTP)"
