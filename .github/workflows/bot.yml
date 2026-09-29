@@ -71,7 +71,7 @@ jobs:
             echo "another run is fueling the chain — no re-dispatch needed"
             exit 0
           fi
-          sleep 120
+          sleep 240
           HTTP=$(curl -sS --fail -o /tmp/dispatch_body.txt -w "%{http_code}" -X POST \
             -H "Authorization: token $GH_PAT" \
             -H "Accept: application/vnd.github+json" \
