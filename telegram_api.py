@@ -39,18 +39,42 @@ class TelegramClient:
             log.warning("فشل نداء %s: %s", method, ex)
             return None
 
-    def send_html(self, chat_id, text: str) -> bool:
-        """إرسال رسالة HTML — لو الترميز اترفض يحاول يبعت نسخة نص عادي"""
-        result = self.call("sendMessage", chat_id=chat_id, text=text[:4096],
-                           parse_mode="HTML", disable_web_page_preview=True)
+    @staticmethod
+    def _keyboard(button=None, buttons=None):
+        """بناء inline keyboard من زر واحد أو صفوف أزرار
+        button  = dict {"text", "url" أو "callback_data"}
+        buttons = list من الصفوف، كل صف list من الأزرار"""
+        if buttons:
+            return {"inline_keyboard": buttons}
+        if button:
+            return {"inline_keyboard": [[button]]}
+        return None
+
+    def send_html(self, chat_id, text: str, button=None, buttons=None) -> bool:
+        """إرسال رسالة HTML (مع أزرار اختيارية) — لو الترميز اترفض يحاول نسخة نص عادي"""
+        markup = self._keyboard(button, buttons)
+        params = dict(chat_id=chat_id, text=text[:4096], parse_mode="HTML",
+                      disable_web_page_preview=True)
+        if markup:
+            params["reply_markup"] = markup
+        result = self.call("sendMessage", **params)
         if result is not None:
             return True
         # محاولة أخيرة: من غير أي تنسيق (لو الخبر فيه حروف غريبة كسرت HTML)
-        return self.call("sendMessage", chat_id=chat_id,
-                         text=strip_html(text)[:4096],
-                         disable_web_page_preview=True) is not None
+        fallback = dict(chat_id=chat_id, text=strip_html(text)[:4096],
+                        disable_web_page_preview=True)
+        if markup:
+            fallback["reply_markup"] = markup
+        return self.call("sendMessage", **fallback) is not None
+
+    def answer_callback(self, callback_query_id, text: str = "") -> bool:
+        """رد على ضغطة الزر (يشيل علامة التحميل من فوق الزر)"""
+        params = {"callback_query_id": callback_query_id}
+        if text:
+            params["text"] = text[:190]
+        return self.call("answerCallbackQuery", **params) is not None
 
     def get_updates(self, offset: int):
-        """جلب رسايل الأوامر الجديدة اللي وصلت من آخر مرة (من غير polling مستمر)"""
+        """جلب الرسايل وضغطات الأزرار الجديدة اللي وصلت من آخر مرة"""
         return self.call("getUpdates", offset=offset, limit=20, timeout=0,
-                         allowed_updates=["message"]) or []
+                         allowed_updates=["message", "callback_query"]) or []
