@@ -1,10 +1,10 @@
 # ⚡ بوت أخبار الدهب والدولار — تشغيل مجاني 24/7 على GitHub Actions
 # ------------------------------------------------------------------
-# طريقة التشغيل: سلسلة ذاتية الاستمرار
-#   كل دورة بتشغّل البوت، وبعدين (بعد استراحة 120 ثانية) بتدعّي الدورة اللي بعدها.
-#   حارس التفرّع: مفيش دورة بتعيّي دورة جديدة لو فيه تشغيل تاني شغال أو في طابور،
-#   فعدد السلاسل بيفضل 1 دايماً مهما زادت التشغيلات اليدوية أو المجدولة.
-#   الجدولة cron الأصلية شغالة برضه كاحتياطي (نفس الحارس بيمنع أي تزاحم).
+# طريقة التشغيل: سلسلة ذاتية الاستمرار + حارس ذكي (chain_keeper.py)
+#   كل دورة بتشغّل البوت، وبعدين الحارس الذكي بيتكفل بالدورة الجاية
+#   بمنطق "آخر واحد ياخد العصا": آخر تشغيل بستنّى وبدوّر اللي بعده
+#   بإعادة محاولة 5 مرات — فشل عابر أو تشغيل متعلق مش بيقدروا يوقفوه.
+#   الجدولة cron الأصلية شغالة برضه كاحتياطي (نفس الـ concurrency بيفضل سلسلة واحدة).
 #
 # ملاحظات مهمة:
 # - الريبو Public (عشان دقائق الـ Actions مجانية بلا حدود)
@@ -52,29 +52,8 @@ jobs:
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: python gh_bot.py
 
-      - name: 🔁 تحريك الدورة الجاية (سلسلة ذاتية الاستمرار)
+      - name: 🔁 حارس السلسلة الذكي (إصلاح ذاتي + إعادة محاولة)
         if: always()
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          REPO="${{ github.repository }}"
-          ME="${{ github.run_id }}"
-          ACTIVE=$(curl -sS -H "Authorization: token $GH_PAT" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/actions/runs?per_page=30" \
-            | python3 -c "import json,sys
-          d=json.load(sys.stdin)
-          me=int('$ME')
-          print(sum(1 for r in d.get('workflow_runs',[]) if r['id']!=me and r['status'] in ('queued','in_progress')))" ) || ACTIVE="0"
-          echo "other active runs: $ACTIVE"
-          if [ "$ACTIVE" != "0" ]; then
-            echo "another run is fueling the chain — no re-dispatch needed"
-            exit 0
-          fi
-          sleep 240
-          HTTP=$(curl -sS --fail -o /tmp/dispatch_body.txt -w "%{http_code}" -X POST \
-            -H "Authorization: token $GH_PAT" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/actions/workflows/bot.yml/dispatches" \
-            -d '{"ref":"main"}') || { echo "DISPATCH FAILED:"; cat /tmp/dispatch_body.txt; exit 1; }
-          echo "next cycle dispatched (HTTP $HTTP)"
+        run: python3 chain_keeper.py
