@@ -144,17 +144,21 @@ def now_cairo() -> datetime:
     return datetime.now(TZ) if TZ else datetime.now()
 
 
+DIV = "━━━━━━━━━━━━━━━━━━"
+
+
 def format_news_message(item, arabic_title: str, arabic_summary: str) -> str:
-    """صياغة رسالة الخبر بالعربي"""
+    """صياغة رسالة الخبر بالعربي — شكل نشرة اقتصادية فخمة
+    (لينك الخبر بيتحط كزر تحت الرسالة عن طريق send_html)"""
     t = now_cairo().strftime("%I:%M %p")
-    emoji = "🟡" if item["kind"] == "gold" else "💵"
-    msg = f"{emoji} <b>{html.escape(arabic_title)}</b>\n\n"
+    chip = "🟡 <b>الدهب والمعادن</b>" if item["kind"] == "gold" else "💵 <b>الأسواق والدولار</b>"
+    msg = f"{chip}\n{DIV}\n\n"
+    msg += f"<b>{html.escape(arabic_title)}</b>\n"
     if arabic_summary and arabic_summary != item["summary"]:
-        msg += f"{html.escape(arabic_summary[:350])}\n\n"
+        msg += f"\n{html.escape(arabic_summary[:350])}\n"
     elif item["summary"]:
-        msg += f"{html.escape(item['summary'][:350])}\n\n"
-    msg += (f"📌 {html.escape(item['source'])} | 🕐 {t} بتوقيت القاهرة\n"
-            f"🔗 <a href=\"{html.escape(item['link'])}\">اقرأ الخبر كامل</a>")
+        msg += f"\n{html.escape(item['summary'][:350])}\n"
+    msg += f"\n{DIV}\n📌 {html.escape(item['source'])} | 🕐 {t} بتوقيت القاهرة"
     return msg
 
 
