@@ -36,20 +36,38 @@ log = logging.getLogger("gh-bot")
 
 STATE_BRANCH = "bot-state"   # البرانش اللي فيه ملف الحالة (كوميت واحد بس بيتحدّث)
 ON_GITHUB = os.environ.get("GITHUB_ACTIONS") == "true"
+DIV = "━━━━━━━━━━━━━━━━━━"   # فاصل التنسيق الفخم
 
 HELP_TEXT = (
     "أهلاً يا معلم 👋\n"
     "أنا بوت أخبار الاقتصاد والأسواق — متخصص في <b>الدهب 💛 والدولار 💵</b>\n\n"
-    "<b>الأوامر:</b>\n"
+    "🤖 <b>دوس على الأزرار تحت وخلاص</b> — أو ابعت أمر بالكتابة:\n\n"
     "/news — آخر الأخبار المهمة\n"
     "/gold — أخبار الدهب بس\n"
-    "/calendar — الأخبار الاقتصادية الجاية\n"
-    "/price — أسعار لحظية (دهب + DXY + دولار/جنيه)\n"
+    "/calendar — التقويم الاقتصادي الجاي\n"
+    "/price — نشرة الأسعار الكاملة\n"
+    "/silver — سعر الفضة 🥈\n"
+    "/oil — أسعار النفط ⛽\n"
+    "/btc — سعر البيتكوين ₿\n"
+    "/eur — العملات الرئيسية 💱\n"
+    "/menu — القائمة بأزرار\n"
     "/id — رقم الشات ده\n\n"
     "📣 وبنشر تلقائي في القناة\n"
     "🚨 وتبنيه قبل الأخبار المهمة بـ " + str(config.ALERT_BEFORE_MINUTES) + " دقيقة\n\n"
     "ℹ️ أنا بشتغل بنظام \"شغلة كل 5 دقايق\" — يعني ردّي على أوامرك ممكن يتأخر شوية (لحد 5 دقايق)"
 )
+
+# قائمة الأزرار الرئيسية — كل زر بيستدعي أمر من غير كتابة
+MENU_BUTTONS = [
+    [{"text": "💰 الأسعار الكاملة", "callback_data": "cmd:price"},
+     {"text": "🟡 أخبار الدهب", "callback_data": "cmd:gold"}],
+    [{"text": "📰 الأخبار", "callback_data": "cmd:news"},
+     {"text": "📅 التقويم", "callback_data": "cmd:calendar"}],
+    [{"text": "🥈 الفضة", "callback_data": "cmd:silver"},
+     {"text": "⛽ النفط", "callback_data": "cmd:oil"}],
+    [{"text": "₿ بيتكوين", "callback_data": "cmd:btc"},
+     {"text": "💱 العملات", "callback_data": "cmd:eur"}],
+]
 
 
 # ---------- حفظ واسترجاع الحالة من جي هب ----------
@@ -184,49 +202,86 @@ def reply_calendar(tg, chat_id):
 
 
 def reply_price(tg, chat_id):
-    tg.send_html(chat_id, "⏳ بجيب الأسعار اللحظية...")
+    tg.send_html(chat_id, "⏳ بجيب نشرة الأسعار...")
     tg.send_html(chat_id, prices_module.get_price_message())
 
 
+# كروت الأسعار المفردة (فضة/نفط/بيتكوين/عملات)
+PRICE_CARDS = {
+    "silver": prices_module.get_silver_message,
+    "oil": prices_module.get_oil_message,
+    "btc": prices_module.get_btc_message,
+    "eur": prices_module.get_eur_message,
+}
+
+
+def reply_card(tg, chat_id, key):
+    tg.send_html(chat_id, "⏳ بجيب السعر...")
+    tg.send_html(chat_id, PRICE_CARDS[key]())
+
+
+def dispatch_command(tg, chat_id, raw):
+    """تنفيذ أي أمر (كتابة أو ضغطة زر) في مكان واحد"""
+    cmd = (raw or "").strip()
+    if not cmd:
+        return
+    cmd = cmd.split()[0].split("@")[0].lower().lstrip("/")
+    try:
+        if cmd in ("start", "help", "menu"):
+            tg.send_html(chat_id, HELP_TEXT, buttons=MENU_BUTTONS)
+        elif cmd == "news":
+            reply_news(tg, chat_id)
+        elif cmd == "gold":
+            reply_gold(tg, chat_id)
+        elif cmd == "calendar":
+            reply_calendar(tg, chat_id)
+        elif cmd == "price":
+            reply_price(tg, chat_id)
+        elif cmd in PRICE_CARDS:
+            reply_card(tg, chat_id, cmd)
+        elif cmd == "id":
+            tg.send_html(
+                chat_id,
+                f"🆔 رقم الشات ده: <code>{chat_id}</code>\n\n"
+                "لو دي القناة بتاعتك: انسخ الرقم ده وحطه في Secret باسم CHANNEL_ID\n"
+                "(الرقم السالب ده عادي — ده رقم جروب/قناة)\n"
+                "⚠️ متنساش تضيف البوت أدمن في القناة عشان يقدر ينشر",
+            )
+        else:
+            tg.send_html(chat_id, "مش فاهم الأمر ده 😅 خد القائمة جاهزة:",
+                         buttons=MENU_BUTTONS)
+    except Exception as ex:
+        log.warning("فشل تنفيذ أمر %s: %s", cmd, ex)
+
+
 def handle_commands(tg):
-    """بيقرا رسايل الأوامر اللي وصلت من آخر تشغيل ويرد عليها"""
+    """يقرا رسايل الأوامر وضغطات الأزرار اللي وصلت من آخر تشغيل ويرد عليها"""
     updates = tg.get_updates(state.get_last_update_id() + 1)
     if not updates:
         return
-    log.info("وصلت %d رسالة/أمر", len(updates))
+    log.info("وصلت %d رسالة/أمر/زر", len(updates))
     for update in updates:
         state.set_last_update_id(update.get("update_id"))
+
+        # ضغطة زر من القائمة
+        cb = update.get("callback_query")
+        if cb:
+            data = (cb.get("data") or "").strip()
+            chat_id = ((cb.get("message") or {}).get("chat") or {}).get("id")
+            tg.answer_callback(cb.get("id"))
+            log.info("ضغطة زر: %s (من %s)", data, chat_id)
+            if chat_id is not None and data.startswith("cmd:"):
+                dispatch_command(tg, chat_id, data[4:])
+            continue
+
         message = update.get("message") or {}
         chat = message.get("chat") or {}
         chat_id = chat.get("id")
         text = (message.get("text") or "").strip()
         if chat_id is None or not text:
             continue
-        command = text.split()[0].split("@")[0].lower()
-        log.info("أمر جديد: %s (من %s)", command, chat_id)
-        try:
-            if command in ("/start", "/help"):
-                tg.send_html(chat_id, HELP_TEXT)
-            elif command == "/news":
-                reply_news(tg, chat_id)
-            elif command == "/gold":
-                reply_gold(tg, chat_id)
-            elif command == "/calendar":
-                reply_calendar(tg, chat_id)
-            elif command == "/price":
-                reply_price(tg, chat_id)
-            elif command == "/id":
-                tg.send_html(
-                    chat_id,
-                    f"🆔 رقم الشات ده: <code>{chat_id}</code>\n\n"
-                    "لو دي القناة بتاعتك: انسخ الرقم ده وحطه في Secret باسم CHANNEL_ID\n"
-                    "(الرقم السالب ده عادي — ده رقم جروب/قناة)\n"
-                    "⚠️ متنساش تضيف البوت أدمن في القناة عشان يقدر ينشر",
-                )
-            else:
-                tg.send_html(chat_id, "مش فاهم الأمر ده 😅 جرب /help")
-        except Exception as ex:
-            log.warning("فشل تنفيذ أمر %s: %s", command, ex)
+        log.info("أمر جديد: %s (من %s)", text.split()[0], chat_id)
+        dispatch_command(tg, chat_id, text)
         time.sleep(0.5)
 
 
@@ -244,12 +299,14 @@ def send_due_alerts(tg):
         forecast = html.escape(ev["forecast"]) if ev["forecast"] else "—"
         previous = html.escape(ev["previous"]) if ev["previous"] else "—"
         msg = (
-            "🚨 <b>تنبيه: خبر اقتصادي مهم قرب!</b>\n\n"
-            f"🔴 <b>{name}</b>\n"
+            f"🚨 <b>تنبيه عاجل</b>\n"
+            f"{DIV}\n\n"
+            f"🔴 <b>{name}</b>\n\n"
             f"🕐 هيصدر بعد <b>{minutes_left} دقيقة</b> — {time_str} بتوقيت القاهرة\n"
             f"📊 التأثير: عالي على الدولار والدهب\n"
-            f"📈 المتوقع: {forecast} | السابق: {previous}\n\n"
-            "⚠️ السوق ممكن يتحرك عنيف — خد بالك من صفقاتك والستوبات!"
+            f"📈 المتوقع: <b>{forecast}</b> | السابق: <b>{previous}</b>\n\n"
+            f"{DIV}\n"
+            f"⚠️ السوق ممكن يتحرك عنيف — خد بالك من صفقاتك وستوباتك!"
         )
         if tg.send_html(target, msg):
             state.mark_alert_sent(key)
@@ -284,7 +341,8 @@ def broadcast_news_if_due(tg):
                      idle / 60, score)
             title = news_module.translate_to_arabic(item["title"])
             summary = news_module.translate_to_arabic(item["summary"]) if item["summary"] else ""
-            if tg.send_html(target, news_module.format_news_message(item, title, summary)):
+            if tg.send_html(target, news_module.format_news_message(item, title, summary),
+                            button={"text": "📖 المصدر الكامل", "url": item["link"]}):
                 state.set_last_post_time()
                 log.info("صمام السكوت بعت خبر: %s", item["title"][:60])
             return
@@ -292,7 +350,8 @@ def broadcast_news_if_due(tg):
         return
     log.info("هينشر %d خبر", len(ready))
     for r in ready:
-        if tg.send_html(target, r["message"]):
+        if tg.send_html(target, r["message"],
+                        button={"text": "📖 المصدر الكامل", "url": r["item"]["link"]}):
             state.set_last_post_time()
             time.sleep(config.SEND_DELAY_SECONDS)
         else:
